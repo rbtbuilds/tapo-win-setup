@@ -1,0 +1,43 @@
+name: test-windows-setup
+
+# Runs the Tapo emulator setup script on a real Windows x86 machine and checks it
+# produced everything. Note: GitHub's Windows runners can't run the emulator with
+# hardware acceleration, so this validates the SETUP (downloads, JDK, SDK, AVD) --
+# the actual emulator boot + Tapo render is verified separately.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci, main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the setup script
+        shell: pwsh
+        run: ./Setup-Tapo-Emulator.ps1
+
+      - name: Verify setup artifacts
+        shell: pwsh
+        run: |
+          $sdk = "$env:LOCALAPPDATA\TapoEmulator\sdk"
+          $fail = @()
+          if (-not (Test-Path "$sdk\emulator\emulator.exe"))      { $fail += "emulator.exe missing" }
+          if (-not (Test-Path "$sdk\platform-tools\adb.exe"))      { $fail += "adb.exe missing" }
+          if (-not (Test-Path "$sdk\system-images\android-34\google_apis_playstore\x86_64\system.img")) { $fail += "system image missing" }
+          $avds = & "$sdk\emulator\emulator.exe" -list-avds
+          if (-not ($avds -match '^Tapo$')) { $fail += "AVD 'Tapo' not created (got: $avds)" }
+          if ($fail.Count) {
+            Write-Host "FAILURES:" -ForegroundColor Red
+            $fail | ForEach-Object { Write-Host " - $_" -ForegroundColor Red }
+            exit 1
+          }
+          Write-Host "OK: emulator, adb, system image, and 'Tapo' AVD all present." -ForegroundColor Green
+          Write-Host "AVDs: $avds"
+          & "$sdk\platform-tools\adb.exe" version
+          Write-Host "--- accel-check (no acceleration expected on a CI runner) ---"
+          & "$sdk\emulator\emulator.exe" -accel-check
+          exit 0
