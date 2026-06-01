@@ -24,6 +24,7 @@ jobs:
         shell: pwsh
         run: |
           $sdk = "$env:LOCALAPPDATA\TapoEmulator\sdk"
+          $env:ANDROID_AVD_HOME = "$env:LOCALAPPDATA\TapoEmulator\avd"  # same place setup created it
           $fail = @()
           if (-not (Test-Path "$sdk\emulator\emulator.exe"))      { $fail += "emulator.exe missing" }
           if (-not (Test-Path "$sdk\platform-tools\adb.exe"))      { $fail += "adb.exe missing" }

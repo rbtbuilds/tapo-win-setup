@@ -103,8 +103,14 @@ if (Test-Path $aehd) {
 Write-Host "[5/7] Creating the 'Tapo' virtual device..." -ForegroundColor Cyan
 $avds = & "$SdkRoot\emulator\emulator.exe" -list-avds
 if (-not ($avds | Select-String "^$AvdName$")) {
-  "no" | & $avdmanager create avd -n $AvdName -k "$Image" -d $Device
+  $createOut = ("no`r`n" | & $avdmanager create avd -n $AvdName -k "$Image" -d $Device 2>&1)
+  $createOut | ForEach-Object { Write-Host "      $_" }
+  $avds = & "$SdkRoot\emulator\emulator.exe" -list-avds
+  if (-not ($avds | Select-String "^$AvdName$")) {
+    throw "AVD '$AvdName' was not created (avdmanager output above). Devices: $(& $avdmanager list device 2>&1 | Select-String 'id:')"
+  }
 }
+Write-Host "      virtual device ready: $AvdName"
 
 # ---- 6) stage the Tapo app bundle ----
 Write-Host "[6/7] Tapo app bundle..." -ForegroundColor Cyan
