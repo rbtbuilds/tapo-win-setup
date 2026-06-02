@@ -193,4 +193,4 @@ Write-Host " DONE.  A 'Tapo' shortcut is on the Desktop." -ForegroundColor Green
 Write-Host " Double-click it. First launch boots + installs Tapo (a few min);" -ForegroundColor Green
 Write-Host " after that it quick-boots in seconds." -ForegroundColor Green
 Write-Host "==================================================================" -ForegroundColor Green
-if ($env:GITHUB_ACTIONS -ne 'true') { Read-Host "Press Enter to close" }
+if (($env:GITHUB_ACTIONS -ne 'true') -and ($env:TAPO_PACKAGED -ne '1')) { Read-Host "Press Enter to close" }

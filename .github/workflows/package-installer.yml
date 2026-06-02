@@ -1,0 +1,80 @@
+name: package-installer
+
+# Builds a self-contained Install-Tapo.exe (bundles the Tapo app + the setup
+# script, runs setup on launch, makes the Tapo desktop shortcut) and attaches it
+# to the 'app-bundle' release. Run manually from the Actions tab.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Stage installer files
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item Setup-Tapo-Emulator.ps1 staging\
+          Copy-Item installer\run-setup.cmd staging\
+          gh release download app-bundle --repo $env:GITHUB_REPOSITORY --pattern "*.apkm" --dir staging
+          Get-ChildItem staging | Select-Object Name,Length
+
+      - name: Write Inno script
+        shell: pwsh
+        run: |
+          $apkm = (Get-ChildItem staging\*.apkm | Select-Object -First 1).Name
+          $iss = @"
+          [Setup]
+          AppName=Tapo
+          AppVersion=1.0
+          DefaultDirName={localappdata}\TapoEmulator\installer
+          DisableDirPage=yes
+          DisableProgramGroupPage=yes
+          PrivilegesRequired=admin
+          OutputDir=out
+          OutputBaseFilename=Install-Tapo
+          Compression=lzma2/fast
+          SolidCompression=no
+          WizardStyle=modern
+          Uninstallable=no
+
+          [Files]
+          Source: "staging\Setup-Tapo-Emulator.ps1"; DestDir: "{app}"; Flags: ignoreversion
+          Source: "staging\run-setup.cmd";          DestDir: "{app}"; Flags: ignoreversion
+          Source: "staging\$apkm";                  DestDir: "{app}"; Flags: ignoreversion
+
+          [Run]
+          Filename: "{app}\run-setup.cmd"; StatusMsg: "Installing Google's Android emulator + Tapo (downloads ~1.5 GB, please wait)..."; Flags: waituntilterminated
+          "@
+          Set-Content -Path tapo.iss -Value $iss -Encoding ASCII
+          Get-Content tapo.iss
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc tapo.iss
+          if (-not (Test-Path out\Install-Tapo.exe)) { throw "Install-Tapo.exe was not produced" }
+          $mb = [math]::Round((Get-Item out\Install-Tapo.exe).Length/1MB,1)
+          Write-Host "Built Install-Tapo.exe ($mb MB)"
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload app-bundle out\Install-Tapo.exe --repo $env:GITHUB_REPOSITORY --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Install-Tapo-exe
+          path: out/Install-Tapo.exe
