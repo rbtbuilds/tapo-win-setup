@@ -1,0 +1,37 @@
+name: smoke-test-installer
+
+# Final check: download the built Install-Tapo.exe and actually RUN it silently
+# on a real Windows machine, then confirm it set up the SDK + 'Tapo' AVD.
+# (Can't boot the accelerated emulator on a runner -- that's verified elsewhere.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download the installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download app-bundle --repo $env:GITHUB_REPOSITORY --pattern "Install-Tapo.exe"
+
+      - name: Run it silently
+        shell: pwsh
+        run: Start-Process -FilePath .\Install-Tapo.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+
+      - name: Verify the installer did its job
+        shell: pwsh
+        run: |
+          $sdk = "$env:LOCALAPPDATA\TapoEmulator\sdk"
+          $env:ANDROID_AVD_HOME = "$env:LOCALAPPDATA\TapoEmulator\avd"
+          if (-not (Test-Path "$sdk\emulator\emulator.exe")) { throw "emulator missing after install" }
+          if (-not (Test-Path "$sdk\platform-tools\adb.exe")) { throw "adb missing after install" }
+          $avds = & "$sdk\emulator\emulator.exe" -list-avds
+          if (-not ($avds -match '^Tapo$')) { throw "installer did not create the 'Tapo' AVD (got: $avds)" }
+          $sc = "$([Environment]::GetFolderPath('Desktop'))\Tapo.lnk"
+          if (Test-Path $sc) { Write-Host "Desktop shortcut created: $sc" } else { Write-Host "NOTE: shortcut not on this runner's desktop (expected to differ)" }
+          Write-Host "OK: Install-Tapo.exe installed the SDK + 'Tapo' AVD end-to-end. AVDs: $avds"
