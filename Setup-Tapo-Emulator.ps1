@@ -22,6 +22,9 @@
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# CRITICAL on Windows PowerShell 5.1: the progress bar makes Invoke-WebRequest
+# 10-50x slower. Silencing it keeps large downloads fast (5.1 is dad's default).
+$ProgressPreference = 'SilentlyContinue'
 
 # ---- elevate to admin (AEHD needs it) ----
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -81,9 +84,24 @@ $avdmanager = "$CmdTools\bin\avdmanager.bat"
 
 # ---- 3) SDK packages (emulator, platform-tools, system image) ----
 Write-Host "[3/7] Accepting licenses + downloading SDK (~1.5 GB, be patient)..." -ForegroundColor Cyan
-$yes = ("y`r`n" * 60)
-$yes | & $sdkmanager --sdk_root="$SdkRoot" --licenses | Out-Null
-$yes | & $sdkmanager --sdk_root="$SdkRoot" "platform-tools" "emulator" "platforms;android-34" "$Image" "extras;google;Android_Emulator_Hypervisor_Driver"
+# Pre-accept SDK licenses by writing the known hash files. This is shell-agnostic
+# and avoids piping 'y' into a console app (which hangs under PowerShell 5.1).
+$licDir = "$SdkRoot\licenses"
+New-Item -ItemType Directory -Force -Path $licDir | Out-Null
+Set-Content -Path "$licDir\android-sdk-license" -Encoding ASCII -Value @(
+  "8933bad161af4178b1185d1a37fbf41ea5269c55",
+  "d56f5187479451eabf01fb78af6dfcb131a6481e",
+  "24333f8a63b6825ea9c5514f83c2829b004d1fee"
+)
+Set-Content -Path "$licDir\android-sdk-preview-license" -Encoding ASCII -Value "84831b9409646a918e30573bab4c9c91346d8abd"
+# Belt-and-braces: also run --licenses, feeding 'y' via a cmd file-redirect
+# (reliable in PS 5.1, unlike a PowerShell pipe). Licenses already accepted above,
+# so this returns immediately rather than waiting on input.
+$yesFile = "$env:TEMP\tapo-yes.txt"
+Set-Content -Path $yesFile -Encoding ASCII -Value (1..60 | ForEach-Object { "y" })
+cmd /c "`"$sdkmanager`" --sdk_root=`"$SdkRoot`" --licenses < `"$yesFile`"" | Out-Null
+# Install (no prompt -- licenses are accepted).
+& $sdkmanager --sdk_root="$SdkRoot" "platform-tools" "emulator" "platforms;android-34" "$Image" "extras;google;Android_Emulator_Hypervisor_Driver"
 
 # ---- 4) accelerator (AEHD) ----
 Write-Host "[4/7] Installing emulator accelerator (AEHD)..." -ForegroundColor Cyan
