@@ -1,0 +1,30 @@
+name: test-ps51
+
+# Runs the setup script under Windows PowerShell 5.1 specifically (what dad's PC
+# has), with output captured, so we can see it complete (or see exactly where it
+# would stall). TAPO_PACKAGED=1 skips the "Press Enter" pause.
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      TAPO_PACKAGED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run setup under Windows PowerShell 5.1
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File Setup-Tapo-Emulator.ps1
+
+      - name: Verify
+        shell: pwsh
+        run: |
+          $sdk = "$env:LOCALAPPDATA\TapoEmulator\sdk"
+          $env:ANDROID_AVD_HOME = "$env:LOCALAPPDATA\TapoEmulator\avd"
+          if (-not (Test-Path "$sdk\emulator\emulator.exe")) { throw "emulator missing" }
+          $avds = & "$sdk\emulator\emulator.exe" -list-avds
+          if (-not ($avds -match '^Tapo$')) { throw "AVD not created under PS 5.1 (got: $avds)" }
+          Write-Host "OK under Windows PowerShell 5.1. AVDs: $avds"
